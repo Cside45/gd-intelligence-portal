@@ -106,8 +106,6 @@ Some platforms resolve `db.*.supabase.co` to **IPv6** first; if the host has no 
 
 `Error: connect ENETUNREACH ... :5432`
 
-This repo sets **IPv4-first DNS** when connecting to Postgres (Node 17+). If you still see errors, on Render add:
+This app **looks up an IPv4 (A record)** for the DB host and connects to that address, with TLS `servername` set to the original hostname (so Supabase certificates still work).
 
-`NODE_OPTIONS` = `--dns-result-order=ipv4first`
-
-Or use Supabase’s **Session pooler** connection string (from **Database → Connection string**) instead of the direct DB host.
+If you must disable that: set `PG_RESOLVE_IPV4=false`. Fallback: Supabase **Session pooler** URI or `NODE_OPTIONS=--dns-result-order=ipv4first` on Render.

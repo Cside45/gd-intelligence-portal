@@ -4,24 +4,55 @@ const bcrypt = require("bcrypt");
 
 const usePostgres = Boolean(process.env.DATABASE_URL);
 let db = null;
-let pool = null;
 
-if (usePostgres) {
-  // Supabase often resolves to IPv6 first; some hosts (e.g. Render) have no working IPv6
-  // route → connect ENETUNREACH. Prefer A (IPv4) records for postgres hostname.
-  if (process.env.PG_DNS_IPV4_FIRST !== "false") {
+/** Lazy Pool: resolve DB host to IPv4 before connect (fixes ENETUNREACH when only IPv6 is tried). */
+let postgresPoolPromise = null;
+
+async function createPostgresPool() {
+  const { parse } = require("pg-connection-string");
+  const { Pool } = require("pg");
+  const parsed = parse(process.env.DATABASE_URL);
+  const hostname = parsed.host;
+  let host = hostname;
+  if (process.env.PG_RESOLVE_IPV4 !== "false") {
     try {
-      require("dns").setDefaultResultOrder("ipv4first");
-    } catch (_) {
-      /* Node < 17: ignore */
+      const { address } = await require("dns").promises.lookup(hostname, { family: 4 });
+      host = address;
+    } catch (err) {
+      console.warn("Postgres: IPv4 lookup failed, using hostname:", err.message);
     }
   }
-  const { Pool } = require("pg");
-  pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.PGSSL === "false" ? false : { rejectUnauthorized: false },
+  const useSsl = process.env.PGSSL !== "false";
+  const ssl = useSsl
+    ? {
+        rejectUnauthorized: false,
+        // Cert matches *.supabase.co, not the bare IP
+        servername: hostname,
+      }
+    : false;
+  return new Pool({
+    host,
+    port: parsed.port || 5432,
+    user: parsed.user,
+    password: parsed.password,
+    database: parsed.database,
+    ssl,
   });
-} else {
+}
+
+async function getPostgresPool() {
+  if (!postgresPoolPromise) {
+    postgresPoolPromise = createPostgresPool();
+  }
+  return postgresPoolPromise;
+}
+
+async function pgQuery(text, params) {
+  const pool = await getPostgresPool();
+  return pool.query(text, params);
+}
+
+if (!usePostgres) {
   const sqlite3 = require("sqlite3").verbose();
   const dataDir = path.join(__dirname, "data");
   if (!fs.existsSync(dataDir)) {
@@ -58,7 +89,7 @@ async function run(sql, params = []) {
   if (isInsert && !/returning\s+/i.test(translatedSql)) {
     translatedSql = `${translatedSql} RETURNING id`;
   }
-  const result = await pool.query(translatedSql, params);
+  const result = await pgQuery(translatedSql, params);
   return { lastID: result.rows?.[0]?.id || null, rowCount: result.rowCount };
 }
 
@@ -74,7 +105,7 @@ async function get(sql, params = []) {
       });
     });
   }
-  const result = await pool.query(translateForPostgres(sql), params);
+  const result = await pgQuery(translateForPostgres(sql), params);
   return result.rows[0];
 }
 
@@ -90,13 +121,13 @@ async function all(sql, params = []) {
       });
     });
   }
-  const result = await pool.query(translateForPostgres(sql), params);
+  const result = await pgQuery(translateForPostgres(sql), params);
   return result.rows;
 }
 
 async function initializeDatabase() {
   if (usePostgres) {
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
@@ -104,7 +135,7 @@ async function initializeDatabase() {
         role TEXT NOT NULL DEFAULT 'analyst' CHECK (role IN ('admin', 'lead_analyst', 'analyst', 'lead_internal_affairs', 'internal_affairs'))
       );
     `);
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS dossiers (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -122,7 +153,7 @@ async function initializeDatabase() {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS reports (
         id SERIAL PRIMARY KEY,
         dossier_id INTEGER NOT NULL REFERENCES dossiers(id) ON DELETE CASCADE,
@@ -135,7 +166,7 @@ async function initializeDatabase() {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS report_incidents (
         id SERIAL PRIMARY KEY,
         report_id INTEGER NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
@@ -146,7 +177,7 @@ async function initializeDatabase() {
         incident_outcome TEXT NOT NULL
       );
     `);
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS ia_dossiers (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -164,7 +195,7 @@ async function initializeDatabase() {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS ia_reports (
         id SERIAL PRIMARY KEY,
         dossier_id INTEGER NOT NULL REFERENCES ia_dossiers(id) ON DELETE CASCADE,
@@ -177,7 +208,7 @@ async function initializeDatabase() {
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
       );
     `);
-    await pool.query(`
+    await pgQuery(`
       CREATE TABLE IF NOT EXISTS ia_report_incidents (
         id SERIAL PRIMARY KEY,
         report_id INTEGER NOT NULL REFERENCES ia_reports(id) ON DELETE CASCADE,
