@@ -68,7 +68,7 @@ Password-protected dossier manager for creating and searching intelligence profi
 
 2. In Supabase:
    - Create a new project.
-   - Copy the Postgres connection string from **Project Settings -> Database**.
+   - For **Render** (and other IPv4-only hosts): open **Connect** → **Connection string** → choose **Session pooler**, port **5432**. Use that URI as `DATABASE_URL` (host looks like `aws-0-REGION.pooler.supabase.com`, user like `postgres.PROJECT_REF`). The direct `db.*.supabase.co` URL is **IPv6-only** and will not work on Render unless you buy Supabase’s IPv4 add-on.
 
 3. In Cloudinary:
    - Copy `Cloud name`, `API key`, `API secret` from dashboard.
@@ -100,12 +100,11 @@ Password-protected dossier manager for creating and searching intelligence profi
 - If Cloudinary keys are set, uploads are stored in Cloudinary.
 - If Cloudinary keys are missing, uploads are stored locally in `uploads/`.
 
-### Deploy: `ENETUNREACH` to Supabase (IPv6)
+### Deploy: Supabase on Render (`ENETUNREACH` / no IPv4)
 
-Some platforms resolve `db.*.supabase.co` to **IPv6** first; if the host has no IPv6 route you may see:
+Supabase’s **direct** host `db.<ref>.supabase.co` is **IPv6-only** by default. Render has **no IPv6 route**, so you must use one of:
 
-`Error: connect ENETUNREACH ... :5432`
+1. **Session pooler** (free, IPv4): Supabase **Connect** → **Connection string** → **Session pooler** → port `5432`. Set that full URI as `DATABASE_URL`.
+2. **IPv4 add-on** (paid) on Supabase if you need the direct host.
 
-This app **looks up an IPv4 (A record)** for the DB host and connects to that address, with TLS `servername` set to the original hostname (so Supabase certificates still work).
-
-If you must disable that: set `PG_RESOLVE_IPV4=false`. Fallback: Supabase **Session pooler** URI or `NODE_OPTIONS=--dns-result-order=ipv4first` on Render.
+This app resolves an **A record** and connects by IPv4 when possible; it will error with a clear message if the host has no IPv4. Use `PG_ALLOW_IPV6=true` only on IPv6-capable networks.

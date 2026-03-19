@@ -5,28 +5,71 @@ const bcrypt = require("bcrypt");
 const usePostgres = Boolean(process.env.DATABASE_URL);
 let db = null;
 
-/** Lazy Pool: resolve DB host to IPv4 before connect (fixes ENETUNREACH when only IPv6 is tried). */
+/** Lazy Pool: resolve DB host to IPv4 before connect (Render etc. have no route to IPv6). */
 let postgresPoolPromise = null;
+
+async function resolveFirstIPv4(hostname) {
+  const dns = require("dns").promises;
+  try {
+    const records = await dns.resolve4(hostname);
+    if (records.length) {
+      return records[0];
+    }
+  } catch (_) {
+    /* no A records */
+  }
+  try {
+    const results = await dns.lookup(hostname, { all: true });
+    const v4 = results.find((entry) => entry.family === 4);
+    if (v4) {
+      return v4.address;
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  return null;
+}
 
 async function createPostgresPool() {
   const { parse } = require("pg-connection-string");
   const { Pool } = require("pg");
   const parsed = parse(process.env.DATABASE_URL);
   const hostname = parsed.host;
+  if (!hostname) {
+    throw new Error("DATABASE_URL is missing a host. Check the connection string.");
+  }
+
   let host = hostname;
-  if (process.env.PG_RESOLVE_IPV4 !== "false") {
-    try {
-      const { address } = await require("dns").promises.lookup(hostname, { family: 4 });
-      host = address;
-    } catch (err) {
-      console.warn("Postgres: IPv4 lookup failed, using hostname:", err.message);
+  const allowIpv6Fallback = process.env.PG_ALLOW_IPV6 === "true";
+  const skipIpv4Resolve = process.env.PG_RESOLVE_IPV4 === "false";
+
+  if (!skipIpv4Resolve) {
+    const ipv4 = await resolveFirstIPv4(hostname);
+    if (ipv4) {
+      host = ipv4;
+    } else if (!allowIpv6Fallback) {
+      const isSupabaseDirect =
+        /^db\.[a-z0-9]+\.supabase\.co$/i.test(hostname) || hostname.endsWith(".supabase.co");
+      const hint = isSupabaseDirect
+        ? [
+            "",
+            "Supabase direct hostnames (db.*.supabase.co) are IPv6-only by default.",
+            "On Render you need the Session pooler URL (IPv4):",
+            "Supabase Dashboard → Connect → Connection string → Session pooler, port 5432.",
+            "It looks like: postgresql://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:5432/postgres",
+            "Or add Supabase’s paid IPv4 add-on for the direct host.",
+          ].join("\n")
+        : "\nNo IPv4 (A record) found for this host. Use a host with IPv4 or set PG_ALLOW_IPV6=true if your network supports IPv6.";
+
+      throw new Error(`Postgres: no IPv4 address for host "${hostname}".${hint}`);
     }
   }
+
   const useSsl = process.env.PGSSL !== "false";
   const ssl = useSsl
     ? {
         rejectUnauthorized: false,
-        // Cert matches *.supabase.co, not the bare IP
+        // TLS cert is for the hostname, not the bare IP
         servername: hostname,
       }
     : false;
