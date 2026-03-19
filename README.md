@@ -99,3 +99,15 @@ Password-protected dossier manager for creating and searching intelligence profi
 - If `DATABASE_URL` is not set, the app uses local SQLite at `data/intelligence.db`.
 - If Cloudinary keys are set, uploads are stored in Cloudinary.
 - If Cloudinary keys are missing, uploads are stored locally in `uploads/`.
+
+### Deploy: `ENETUNREACH` to Supabase (IPv6)
+
+Some platforms resolve `db.*.supabase.co` to **IPv6** first; if the host has no IPv6 route you may see:
+
+`Error: connect ENETUNREACH ... :5432`
+
+This repo sets **IPv4-first DNS** when connecting to Postgres (Node 17+). If you still see errors, on Render add:
+
+`NODE_OPTIONS` = `--dns-result-order=ipv4first`
+
+Or use Supabase’s **Session pooler** connection string (from **Database → Connection string**) instead of the direct DB host.

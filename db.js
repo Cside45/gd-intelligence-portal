@@ -7,6 +7,15 @@ let db = null;
 let pool = null;
 
 if (usePostgres) {
+  // Supabase often resolves to IPv6 first; some hosts (e.g. Render) have no working IPv6
+  // route → connect ENETUNREACH. Prefer A (IPv4) records for postgres hostname.
+  if (process.env.PG_DNS_IPV4_FIRST !== "false") {
+    try {
+      require("dns").setDefaultResultOrder("ipv4first");
+    } catch (_) {
+      /* Node < 17: ignore */
+    }
+  }
   const { Pool } = require("pg");
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
