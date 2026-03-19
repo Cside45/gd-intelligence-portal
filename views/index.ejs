@@ -1,0 +1,61 @@
+<%- include("partials-header", { title: "Dossiers" }) %>
+
+<section class="toolbar">
+  <h1>Dossiers</h1>
+  <a href="/dossiers/new" class="btn">Create Dossier</a>
+</section>
+
+<section class="card">
+  <form method="get" action="/" class="form-inline">
+    <label>
+      Name
+      <input type="text" name="name" value="<%= filters.name %>" placeholder="Search by name" />
+    </label>
+    <label>
+      Faction
+      <select name="faction">
+        <option value="">All</option>
+        <% factions.forEach((faction) => { %>
+          <option value="<%= faction %>" <%= filters.faction === faction ? "selected" : "" %>><%= faction %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>
+      Risk
+      <select name="risk">
+        <option value="">All</option>
+        <% riskLevels.forEach((risk) => { %>
+          <option value="<%= risk %>" <%= filters.risk === risk ? "selected" : "" %>><%= risk %></option>
+        <% }) %>
+      </select>
+    </label>
+    <button type="submit" class="btn">Search</button>
+    <a href="/" class="btn btn-ghost">Reset</a>
+  </form>
+</section>
+
+<section class="grid">
+  <% if (dossiers.length === 0) { %>
+    <article class="card">
+      <p>No dossiers found.</p>
+    </article>
+  <% } %>
+
+  <% dossiers.forEach((dossier) => { %>
+    <article class="card dossier-card">
+      <div class="card-head">
+        <h2><%= dossier.name %></h2>
+        <span class="pill pill-<%= dossier.risk_level.toLowerCase() %>"><%= dossier.risk_level %> Risk</span>
+      </div>
+      <p class="muted"><%= dossier.faction %></p>
+      <p><strong>Reports:</strong> <span class="report-count"><%= dossier.report_count %></span></p>
+      <p><strong>Created By:</strong> <%= dossier.created_by_username || "Unknown" %></p>
+      <p><strong>Affiliation:</strong> <%= dossier.affiliation %></p>
+      <p><strong>Assigned Investigator:</strong> <%= dossier.assigned_investigator || "Unassigned" %></p>
+      <p><strong>Warrants:</strong> <%= dossier.previous_warrants %></p>
+      <a class="btn btn-ghost" href="/dossiers/<%= dossier.id %>">View dossier</a>
+    </article>
+  <% }) %>
+</section>
+
+<%- include("partials-footer") %>

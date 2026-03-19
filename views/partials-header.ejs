@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title %></title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <a class="brand" href="/">
+          <img class="brand-logo" src="/fdc-symbol.png" alt="FDC symbol" />
+          <span>Global Dominion Intelligence Portal</span>
+        </a>
+        <% if (currentUser) { %>
+          <div class="topbar-actions">
+            <a class="btn btn-ghost" href="/assignments/my">My Assignments</a>
+            <a class="btn btn-ghost" href="/reports/my">My Reports</a>
+            <% if (canAccessIa) { %>
+              <a class="btn btn-ghost" href="/ia">IA Dossiers</a>
+            <% } %>
+            <% if (isAdmin) { %>
+              <a class="btn btn-ghost" href="/admin/users">Manage Users</a>
+            <% } %>
+            <form method="post" action="/logout">
+              <button class="btn btn-ghost" type="submit">Sign Out</button>
+            </form>
+          </div>
+        <% } %>
+      </div>
+    </header>
+    <main class="container page">

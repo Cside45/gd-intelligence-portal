@@ -1,0 +1,69 @@
+<%- include("partials-header", { title: "Manage Users" }) %>
+
+<section class="toolbar">
+  <h1>Admin User Management</h1>
+  <a href="/" class="btn btn-ghost">Back to Dossiers</a>
+</section>
+
+<section class="card">
+  <h2>Create Account</h2>
+  <% if (error) { %>
+    <p class="error"><%= error %></p>
+  <% } %>
+  <% if (success) { %>
+    <p class="success"><%= success %></p>
+  <% } %>
+  <form method="post" action="/admin/users" class="form-grid">
+    <label>
+      Username *
+      <input type="text" name="username" value="<%= form.username %>" required />
+    </label>
+    <label>
+      Password * (minimum 8 characters)
+      <input type="password" name="password" required />
+    </label>
+    <label>
+      Role *
+      <select name="role" required>
+        <option value="analyst" <%= form.role === "analyst" ? "selected" : "" %>>Analyst</option>
+        <option value="lead_analyst" <%= form.role === "lead_analyst" ? "selected" : "" %>>Lead Analyst</option>
+        <option value="internal_affairs" <%= form.role === "internal_affairs" ? "selected" : "" %>>Internal Affairs</option>
+        <option value="lead_internal_affairs" <%= form.role === "lead_internal_affairs" ? "selected" : "" %>>Lead Internal Affairs</option>
+        <option value="admin" <%= form.role === "admin" ? "selected" : "" %>>Admin</option>
+      </select>
+    </label>
+    <button class="btn" type="submit">Create User</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Existing Accounts</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Role</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <% users.forEach((user) => { %>
+        <tr>
+          <td><%= user.username %></td>
+          <td><%= user.role %></td>
+          <td>
+            <% if (currentUser && currentUser.id !== user.id) { %>
+              <form method="post" action="/admin/users/<%= user.id %>/delete" onsubmit="return confirm('Delete this account? This cannot be undone.');">
+                <button type="submit" class="btn btn-danger">Delete</button>
+              </form>
+            <% } else { %>
+              <span class="muted">Current account</span>
+            <% } %>
+          </td>
+        </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</section>
+
+<%- include("partials-footer") %>

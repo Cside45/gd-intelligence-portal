@@ -1,0 +1,30 @@
+<%- include("partials-header", { title: "My Reports" }) %>
+
+<section class="toolbar">
+  <h1>My Reports</h1>
+  <a href="/" class="btn btn-ghost">Back to Dossiers</a>
+</section>
+
+<section class="card">
+  <% if (!reports || reports.length === 0) { %>
+    <p class="muted">You have not created any reports yet.</p>
+  <% } else { %>
+    <div class="report-list">
+      <% reports.forEach((report) => { %>
+        <article class="report-list-item">
+          <div>
+            <p><strong>Subject:</strong> <%= report.subject_name %></p>
+            <p class="muted"><%= report.subject_faction %> | <%= report.subject_affiliation %></p>
+            <p class="muted">Incidents: <%= report.incident_count %> | Updated: <%= report.updated_at %></p>
+          </div>
+          <div class="toolbar-actions">
+            <a class="btn btn-ghost" href="/dossiers/<%= report.dossier_id %>">Dossier</a>
+            <a class="btn" href="/reports/<%= report.id %>">Open Report</a>
+          </div>
+        </article>
+      <% }) %>
+    </div>
+  <% } %>
+</section>
+
+<%- include("partials-footer") %>

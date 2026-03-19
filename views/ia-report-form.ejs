@@ -1,0 +1,90 @@
+<%- include("partials-header", { title: mode === "create" ? "New IA In-Depth Report" : "Edit IA In-Depth Report" }) %>
+
+<section class="toolbar">
+  <h1><%= mode === "create" ? "Create IA In-Depth Report" : "Edit IA In-Depth Report" %></h1>
+  <a href="/ia/<%= dossier.id %>" class="btn btn-ghost">Back to IA Dossier</a>
+</section>
+
+<section class="card">
+  <h2>Header</h2>
+  <p><strong>Analyst Name:</strong> <%= currentUser.username %></p>
+  <p class="muted"><strong>Created At:</strong> <%= report ? report.created_at : "Auto-generated on submit" %></p>
+</section>
+
+<section class="card">
+  <h2>Subject Profile</h2>
+  <p><strong>Name:</strong> <%= dossier.name %></p>
+  <p><strong>Faction:</strong> <%= dossier.faction %></p>
+  <p><strong>Affiliation:</strong> <%= dossier.affiliation %></p>
+</section>
+
+<section class="card">
+  <h2>Incident Records</h2>
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <form method="post" action="<%= mode === 'create' ? '/ia/' + dossier.id + '/reports' : '/ia/reports/' + report.id + '/edit' %>" class="form-grid" id="report-form">
+    <div id="incident-list" class="form-grid">
+      <% incidents.forEach((incident, idx) => { %>
+        <article class="card incident-card">
+          <h3>Incident <span class="incident-index"><%= idx + 1 %></span></h3>
+          <label>Incident Title *<input type="text" name="incident_title" value="<%= incident.incident_title %>" required /></label>
+          <label>Incident Date/Time *<input type="text" name="incident_datetime" value="<%= incident.incident_datetime %>" placeholder="YYYY-MM-DD HH:mm UTC" required /></label>
+          <label>Incident Description *<textarea name="incident_description" rows="4" required><%= incident.incident_description %></textarea></label>
+          <label>Outcome / Action Taken *<textarea name="incident_outcome" rows="3" required><%= incident.incident_outcome %></textarea></label>
+          <button type="button" class="btn btn-ghost remove-incident">Remove Incident</button>
+        </article>
+      <% }) %>
+    </div>
+    <div class="toolbar-actions">
+      <button type="button" class="btn btn-ghost" id="add-incident">Add Incident</button>
+      <button type="submit" class="btn"><%= mode === "create" ? "Create IA Report" : "Save IA Report Changes" %></button>
+    </div>
+  </form>
+</section>
+
+<template id="incident-template">
+  <article class="card incident-card">
+    <h3>Incident <span class="incident-index"></span></h3>
+    <label>Incident Title *<input type="text" name="incident_title" required /></label>
+    <label>Incident Date/Time *<input type="text" name="incident_datetime" placeholder="YYYY-MM-DD HH:mm UTC" required /></label>
+    <label>Incident Description *<textarea name="incident_description" rows="4" required></textarea></label>
+    <label>Outcome / Action Taken *<textarea name="incident_outcome" rows="3" required></textarea></label>
+    <button type="button" class="btn btn-ghost remove-incident">Remove Incident</button>
+  </article>
+</template>
+
+<script>
+  (function initIncidentForm() {
+    const list = document.getElementById("incident-list");
+    const addButton = document.getElementById("add-incident");
+    const template = document.getElementById("incident-template");
+    function refreshIncidentNumbers() {
+      const cards = list.querySelectorAll(".incident-card");
+      cards.forEach((card, idx) => {
+        const indexEl = card.querySelector(".incident-index");
+        if (indexEl) indexEl.textContent = String(idx + 1);
+      });
+      list.querySelectorAll(".remove-incident").forEach((btn) => {
+        btn.disabled = cards.length === 1;
+      });
+    }
+    function attachRemoveHandler(button) {
+      button.addEventListener("click", () => {
+        const card = button.closest(".incident-card");
+        if (!card) return;
+        if (list.querySelectorAll(".incident-card").length <= 1) return;
+        card.remove();
+        refreshIncidentNumbers();
+      });
+    }
+    addButton.addEventListener("click", () => {
+      list.appendChild(template.content.cloneNode(true));
+      const newCard = list.querySelector(".incident-card:last-child");
+      attachRemoveHandler(newCard.querySelector(".remove-incident"));
+      refreshIncidentNumbers();
+    });
+    list.querySelectorAll(".remove-incident").forEach((btn) => attachRemoveHandler(btn));
+    refreshIncidentNumbers();
+  })();
+</script>
+
+<%- include("partials-footer") %>

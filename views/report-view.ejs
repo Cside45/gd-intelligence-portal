@@ -1,0 +1,39 @@
+<%- include("partials-header", { title: "In-Depth Report" }) %>
+
+<section class="toolbar">
+  <h1>In-Depth Report</h1>
+  <div class="toolbar-actions">
+    <% if (canEdit) { %>
+      <a href="/reports/<%= report.id %>/edit" class="btn">Edit Report</a>
+    <% } %>
+    <a href="/dossiers/<%= report.dossier_id %>" class="btn btn-ghost">Back to Dossier</a>
+  </div>
+</section>
+
+<section class="card">
+  <h2>Header</h2>
+  <p><strong>Analyst Name:</strong> <%= report.analyst_name %></p>
+  <p><strong>Created At:</strong> <%= report.created_at %></p>
+  <p class="muted"><strong>Updated At:</strong> <%= report.updated_at %></p>
+</section>
+
+<section class="card">
+  <h2>Subject Profile</h2>
+  <p><strong>Name:</strong> <%= report.subject_name %></p>
+  <p><strong>Faction:</strong> <%= report.subject_faction %></p>
+  <p><strong>Affiliation:</strong> <%= report.subject_affiliation %></p>
+</section>
+
+<section class="card">
+  <h2>Incident Records</h2>
+  <% incidents.forEach((incident, idx) => { %>
+    <article class="incident-view">
+      <h3>Incident <%= idx + 1 %>: <%= incident.incident_title %></h3>
+      <p><strong>Date/Time:</strong> <%= incident.incident_datetime %></p>
+      <p><strong>Description:</strong> <%= incident.incident_description %></p>
+      <p><strong>Outcome/Action Taken:</strong> <%= incident.incident_outcome %></p>
+    </article>
+  <% }) %>
+</section>
+
+<%- include("partials-footer") %>

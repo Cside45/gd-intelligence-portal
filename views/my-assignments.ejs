@@ -1,0 +1,32 @@
+<%- include("partials-header", { title: "My Assignments" }) %>
+
+<section class="toolbar">
+  <h1>My Assignments</h1>
+  <a href="/" class="btn btn-ghost">Back to Dossiers</a>
+</section>
+
+<section class="grid">
+  <% if (!dossiers || dossiers.length === 0) { %>
+    <article class="card">
+      <p class="muted">No dossiers assigned to you yet.</p>
+    </article>
+  <% } %>
+
+  <% dossiers.forEach((dossier) => { %>
+    <article class="card dossier-card">
+      <div class="card-head">
+        <h2><%= dossier.name %></h2>
+        <span class="pill pill-<%= dossier.risk_level.toLowerCase() %>"><%= dossier.risk_level %> Risk</span>
+      </div>
+      <p class="muted"><%= dossier.faction %></p>
+      <p><strong>Reports:</strong> <span class="report-count"><%= dossier.report_count %></span></p>
+      <p><strong>Created By:</strong> <%= dossier.created_by_username || "Unknown" %></p>
+      <p><strong>Affiliation:</strong> <%= dossier.affiliation %></p>
+      <p><strong>Assigned Investigator:</strong> <%= dossier.assigned_investigator || "Unassigned" %></p>
+      <p><strong>Warrants:</strong> <%= dossier.previous_warrants %></p>
+      <a class="btn btn-ghost" href="/dossiers/<%= dossier.id %>">View dossier</a>
+    </article>
+  <% }) %>
+</section>
+
+<%- include("partials-footer") %>

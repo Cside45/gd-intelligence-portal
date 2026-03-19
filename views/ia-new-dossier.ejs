@@ -1,0 +1,36 @@
+<%- include("partials-header", { title: "New IA Dossier" }) %>
+
+<section class="toolbar">
+  <h1>Create IA Dossier</h1>
+  <a href="/ia" class="btn btn-ghost">Back</a>
+</section>
+
+<section class="card">
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <form action="/ia" method="post" enctype="multipart/form-data" class="form-grid">
+    <label>Name *<input type="text" name="name" value="<%= form.name %>" required /></label>
+    <label>
+      Faction *
+      <select name="faction" required>
+        <% factions.forEach((faction) => { %>
+          <option value="<%= faction %>" <%= form.faction === faction ? "selected" : "" %>><%= faction %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Affiliation *<input type="text" name="affiliation" value="<%= form.affiliation %>" required /></label>
+    <label>Previous Warrants *<input type="text" name="previous_warrants" value="<%= form.previous_warrants %>" required /></label>
+    <label>
+      Risk Level *
+      <select name="risk_level" required>
+        <% riskLevels.forEach((risk) => { %>
+          <option value="<%= risk %>" <%= form.risk_level === risk ? "selected" : "" %>><%= risk %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Screenshot<input type="file" name="screenshot" accept=".png,.jpg,.jpeg,.webp" /></label>
+    <label class="full-width">Notes<textarea name="notes" rows="6"><%= form.notes %></textarea></label>
+    <button type="submit" class="btn">Save IA Dossier</button>
+  </form>
+</section>
+
+<%- include("partials-footer") %>

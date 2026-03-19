@@ -1,0 +1,35 @@
+<%- include("partials-header", { title: "Edit IA Dossier" }) %>
+
+<section class="toolbar">
+  <h1>Edit IA Core Fields</h1>
+  <a href="/ia/<%= dossier.id %>" class="btn btn-ghost">Back</a>
+</section>
+
+<section class="card">
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <form action="/ia/<%= dossier.id %>/edit" method="post" enctype="multipart/form-data" class="form-grid">
+    <label>Name *<input type="text" name="name" value="<%= dossier.name %>" required /></label>
+    <label>
+      Faction *
+      <select name="faction" required>
+        <% factions.forEach((faction) => { %>
+          <option value="<%= faction %>" <%= dossier.faction === faction ? "selected" : "" %>><%= faction %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Affiliation *<input type="text" name="affiliation" value="<%= dossier.affiliation %>" required /></label>
+    <label>Previous Warrants *<input type="text" name="previous_warrants" value="<%= dossier.previous_warrants %>" required /></label>
+    <label>
+      Risk Level *
+      <select name="risk_level" required>
+        <% riskLevels.forEach((risk) => { %>
+          <option value="<%= risk %>" <%= dossier.risk_level === risk ? "selected" : "" %>><%= risk %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>Replace Screenshot<input type="file" name="screenshot" accept=".png,.jpg,.jpeg,.webp" /></label>
+    <button type="submit" class="btn">Save IA Core Fields</button>
+  </form>
+</section>
+
+<%- include("partials-footer") %>

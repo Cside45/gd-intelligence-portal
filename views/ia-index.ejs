@@ -1,0 +1,51 @@
+<%- include("partials-header", { title: "IA Dossiers" }) %>
+
+<section class="toolbar">
+  <h1>Internal Affairs Dossiers</h1>
+  <a href="/ia/new" class="btn">Create IA Dossier</a>
+</section>
+
+<section class="card">
+  <form method="get" action="/ia" class="form-inline">
+    <label>Name<input type="text" name="name" value="<%= filters.name %>" placeholder="Search by name" /></label>
+    <label>
+      Faction
+      <select name="faction">
+        <option value="">All</option>
+        <% factions.forEach((faction) => { %>
+          <option value="<%= faction %>" <%= filters.faction === faction ? "selected" : "" %>><%= faction %></option>
+        <% }) %>
+      </select>
+    </label>
+    <label>
+      Risk
+      <select name="risk">
+        <option value="">All</option>
+        <% riskLevels.forEach((risk) => { %>
+          <option value="<%= risk %>" <%= filters.risk === risk ? "selected" : "" %>><%= risk %></option>
+        <% }) %>
+      </select>
+    </label>
+    <button type="submit" class="btn">Search</button>
+    <a href="/ia" class="btn btn-ghost">Reset</a>
+  </form>
+</section>
+
+<section class="grid">
+  <% if (!dossiers.length) { %><article class="card"><p>No IA dossiers found.</p></article><% } %>
+  <% dossiers.forEach((dossier) => { %>
+    <article class="card dossier-card">
+      <div class="card-head">
+        <h2><%= dossier.name %></h2>
+        <span class="pill pill-<%= dossier.risk_level.toLowerCase() %>"><%= dossier.risk_level %> Risk</span>
+      </div>
+      <p class="muted"><%= dossier.faction %></p>
+      <p><strong>Reports:</strong> <span class="report-count"><%= dossier.report_count %></span></p>
+      <p><strong>Created By:</strong> <%= dossier.created_by_username || "Unknown" %></p>
+      <p><strong>Assigned IA:</strong> <%= dossier.assigned_investigator || "Unassigned" %></p>
+      <a class="btn btn-ghost" href="/ia/<%= dossier.id %>">View IA dossier</a>
+    </article>
+  <% }) %>
+</section>
+
+<%- include("partials-footer") %>

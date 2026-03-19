@@ -1,0 +1,86 @@
+<%- include("partials-header", { title: dossier.name + " IA Dossier" }) %>
+
+<section class="toolbar">
+  <h1><%= dossier.name %> (Internal Affairs)</h1>
+  <div class="toolbar-actions">
+    <a href="/ia/<%= dossier.id %>/reports/new" class="btn">New IA Report</a>
+    <a href="/ia/<%= dossier.id %>/edit" class="btn btn-ghost">Edit Core Fields</a>
+    <% if (isAdmin) { %>
+      <form method="post" action="/ia/<%= dossier.id %>/delete" onsubmit="return confirm('Delete this IA dossier and all related IA reports? This cannot be undone.');">
+        <button type="submit" class="btn btn-danger">Delete IA Dossier</button>
+      </form>
+    <% } %>
+    <a href="/ia" class="btn btn-ghost">Back</a>
+  </div>
+</section>
+
+<section class="detail-layout">
+  <article class="card">
+    <% if (dossier.image_path) { %>
+      <img class="profile-image" src="<%= dossier.image_path %>" alt="<%= dossier.name %> screenshot" />
+    <% } else { %>
+      <div class="image-placeholder">No screenshot uploaded</div>
+    <% } %>
+  </article>
+  <article class="card">
+    <div class="card-head">
+      <h2>Profile</h2>
+      <span class="pill pill-<%= dossier.risk_level.toLowerCase() %>"><%= dossier.risk_level %> Risk</span>
+    </div>
+    <p><strong>Faction:</strong> <%= dossier.faction %></p>
+    <p><strong>Affiliation:</strong> <%= dossier.affiliation %></p>
+    <p><strong>Created By:</strong> <%= dossier.created_by_username || "Unknown" %></p>
+    <p><strong>Assigned IA:</strong> <%= dossier.assigned_investigator || "Unassigned" %></p>
+    <p><strong>Previous Warrants:</strong> <%= dossier.previous_warrants %></p>
+    <p class="muted">Created: <%= dossier.created_at %></p>
+    <p class="muted">Last Updated: <%= dossier.updated_at %></p>
+  </article>
+</section>
+
+<% if (canAssign) { %>
+  <section class="card">
+    <h2>IA Assignment Control</h2>
+    <form method="post" action="/ia/<%= dossier.id %>/assign" class="form-inline">
+      <label>
+        Assign IA User
+        <select name="assigned_investigator_user_id" required>
+          <option value="">Select IA user</option>
+          <% analysts.forEach((analyst) => { %>
+            <option value="<%= analyst.id %>" <%= dossier.assigned_investigator_user_id === analyst.id ? "selected" : "" %>><%= analyst.username %></option>
+          <% }) %>
+        </select>
+      </label>
+      <button class="btn" type="submit">Save Assignment</button>
+    </form>
+  </section>
+<% } %>
+
+<section class="card">
+  <h2>Live Notes</h2>
+  <% if (message) { %><p class="success"><%= message %></p><% } %>
+  <form method="post" action="/ia/<%= dossier.id %>/notes" class="form-grid">
+    <label class="full-width">Notes<textarea name="notes" rows="10"><%= dossier.notes %></textarea></label>
+    <button class="btn" type="submit">Update Notes</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>IA In-Depth Reports</h2>
+  <% if (!reports || reports.length === 0) { %>
+    <p class="muted">No IA reports added yet.</p>
+  <% } else { %>
+    <div class="report-list">
+      <% reports.forEach((report) => { %>
+        <article class="report-list-item">
+          <div>
+            <p><strong>Analyst:</strong> <%= report.analyst_name %></p>
+            <p class="muted">Created: <%= report.created_at %> | Updated: <%= report.updated_at %></p>
+          </div>
+          <a class="btn btn-ghost" href="/ia/reports/<%= report.id %>">View IA Report</a>
+        </article>
+      <% }) %>
+    </div>
+  <% } %>
+</section>
+
+<%- include("partials-footer") %>
