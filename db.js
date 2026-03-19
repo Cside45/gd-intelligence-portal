@@ -34,9 +34,16 @@ async function createPostgresPool() {
   const { parse } = require("pg-connection-string");
   const { Pool } = require("pg");
   const parsed = parse(process.env.DATABASE_URL);
-  const hostname = parsed.host;
+  let hostname = parsed.host;
   if (!hostname) {
     throw new Error("DATABASE_URL is missing a host. Check the connection string.");
+  }
+  hostname = hostname.trim();
+  if (/\s/.test(hostname)) {
+    throw new Error(
+      `Postgres host contains a space or invalid character: "${hostname}". ` +
+        `Often this is a typo: use "us-east-1" (hyphens), not "us-east 1". Re-copy Session pooler URL from Supabase.`
+    );
   }
 
   let host = hostname;
