@@ -29,6 +29,13 @@ const factions = [
 
 const riskLevels = ["Low", "Medium", "High"];
 
+/** Analysts and lead analysts may be assigned to normal dossiers. */
+function getAssignableDossierInvestigators() {
+  return all(
+    "SELECT id, username, role FROM users WHERE role IN ('analyst', 'lead_analyst') ORDER BY username ASC"
+  );
+}
+
 const uploadDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
@@ -469,7 +476,7 @@ app.get("/dossiers/:id", requireAuth, async (req, res, next) => {
        ORDER BY created_at DESC`,
       [req.params.id]
     );
-    const analysts = await all("SELECT id, username FROM users WHERE role = 'analyst' ORDER BY username ASC");
+    const analysts = await getAssignableDossierInvestigators();
     res.render("dossier-detail", {
       dossier,
       message: "",
@@ -498,7 +505,7 @@ app.post("/dossiers/:id/notes", requireAuth, async (req, res, next) => {
        ORDER BY created_at DESC`,
       [req.params.id]
     );
-    const analysts = await all("SELECT id, username FROM users WHERE role = 'analyst' ORDER BY username ASC");
+    const analysts = await getAssignableDossierInvestigators();
     res.render("dossier-detail", {
       dossier,
       message: "Notes updated.",
@@ -525,15 +532,18 @@ app.post("/dossiers/:id/assign", requireAuth, async (req, res, next) => {
     }
 
     const assignedUserId = Number(req.body.assigned_investigator_user_id || 0);
-    const analyst = await get("SELECT id, username FROM users WHERE id = ? AND role = 'analyst'", [assignedUserId]);
-    if (!analyst) {
-      res.status(400).send("Invalid analyst selected.");
+    const assignee = await get(
+      "SELECT id, username FROM users WHERE id = ? AND role IN ('analyst', 'lead_analyst')",
+      [assignedUserId]
+    );
+    if (!assignee) {
+      res.status(400).send("Invalid investigator selected. Choose an analyst or lead analyst.");
       return;
     }
 
     await run(
       "UPDATE dossiers SET assigned_investigator_user_id = ?, assigned_investigator = ?, updated_at = datetime('now') WHERE id = ?",
-      [analyst.id, analyst.username, req.params.id]
+      [assignee.id, assignee.username, req.params.id]
     );
 
     res.redirect(`/dossiers/${req.params.id}`);

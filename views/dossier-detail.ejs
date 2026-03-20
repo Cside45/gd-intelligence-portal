@@ -43,11 +43,11 @@
     <h2>Assignment Control</h2>
     <form method="post" action="/dossiers/<%= dossier.id %>/assign" class="form-inline">
       <label>
-        Assign Analyst
+        Assign investigator
         <select name="assigned_investigator_user_id" required>
-          <option value="">Select analyst</option>
+          <option value="">Select analyst or lead analyst</option>
           <% analysts.forEach((analyst) => { %>
-            <option value="<%= analyst.id %>" <%= dossier.assigned_investigator_user_id === analyst.id ? "selected" : "" %>><%= analyst.username %></option>
+            <option value="<%= analyst.id %>" <%= dossier.assigned_investigator_user_id === analyst.id ? "selected" : "" %>><%= analyst.username %><%= analyst.role === "lead_analyst" ? " (Lead)" : "" %></option>
           <% }) %>
         </select>
       </label>
