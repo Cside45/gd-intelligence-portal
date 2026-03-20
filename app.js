@@ -153,6 +153,7 @@ app.get("/active-warrants", async (req, res, next) => {
        WHERE warrant_status = 'active'
          AND warrant_expires_at IS NOT NULL
          AND warrant_expires_at > datetime('now')
+         AND warrant_classification IN ('AoS', 'EoS', 'KoS')
        ORDER BY warrant_expires_at ASC`
     );
     const warrants = rows.map((r) => ({
@@ -653,8 +654,8 @@ app.post("/dossiers/:id/warrants", requireAuth, async (req, res, next) => {
         res.status(400).send("Select a warrant type.");
         return;
       }
-      if (!WARRANT_CLASSIFICATIONS.some((c) => c.value === classification)) {
-        res.status(400).send("Select AoS, EoS, or KoS.");
+      if (classification && !WARRANT_CLASSIFICATIONS.some((c) => c.value === classification)) {
+        res.status(400).send("Invalid classification.");
         return;
       }
       if (!WARRANT_DURATION_MS[duration]) {
@@ -1212,8 +1213,8 @@ app.post("/ia/:id/warrants", requireIaAccess, async (req, res, next) => {
         res.status(400).send("Select a warrant type.");
         return;
       }
-      if (!WARRANT_CLASSIFICATIONS.some((c) => c.value === classification)) {
-        res.status(400).send("Select AoS, EoS, or KoS.");
+      if (classification && !WARRANT_CLASSIFICATIONS.some((c) => c.value === classification)) {
+        res.status(400).send("Invalid classification.");
         return;
       }
       if (!WARRANT_DURATION_MS[duration]) {

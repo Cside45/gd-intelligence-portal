@@ -26,7 +26,7 @@
       <p>
         <strong>Warrant:</strong>
         <% if (dossier.warrant_status === "active" && dossier.warrant_expires_at && Date.parse(dossier.warrant_expires_at) > Date.now()) { %>
-          <%= dossier.warrant_classification %> — <%= crimeLabel(dossier.warrant_crime) %>
+          <% if (dossier.warrant_classification) { %><%= dossier.warrant_classification %> — <% } %><%= crimeLabel(dossier.warrant_crime) %>
         <% } else { %>
           <span class="muted">None active</span>
         <% } %>

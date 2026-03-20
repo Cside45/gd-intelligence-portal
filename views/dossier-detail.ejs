@@ -85,7 +85,7 @@
       <label id="wrap_class_main">
         Classification
         <select name="warrant_classification">
-          <option value="">— Select —</option>
+          <option value="" <%= !dossier.warrant_classification ? "selected" : "" %>>Blank</option>
           <% warrantClassifications.forEach((c) => { %>
             <option value="<%= c.value %>" <%= dossier.warrant_classification === c.value ? "selected" : "" %>><%= c.label %></option>
           <% }) %>

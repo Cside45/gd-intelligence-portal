@@ -55,7 +55,7 @@
       <p>
         <strong>Warrant:</strong>
         <% if (dossier.warrant_status === "active" && dossier.warrant_expires_at && Date.parse(dossier.warrant_expires_at) > Date.now()) { %>
-          <%= dossier.warrant_classification %> — <%= crimeLabel(dossier.warrant_crime) %> (expires <%= new Date(dossier.warrant_expires_at).toLocaleString() %>)
+          <% if (dossier.warrant_classification) { %><%= dossier.warrant_classification %> — <% } %><%= crimeLabel(dossier.warrant_crime) %> (expires <%= new Date(dossier.warrant_expires_at).toLocaleString() %>)
         <% } else if (dossier.warrant_status === "active" && dossier.warrant_expires_at) { %>
           <span class="muted">Expired</span>
         <% } else { %>
