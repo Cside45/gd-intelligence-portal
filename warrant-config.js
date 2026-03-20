@@ -32,11 +32,11 @@ const WARRANT_DURATION_OPTIONS = [
   { value: "5d", label: "5 days" },
 ];
 
-/** Arrest / status scope: Arrest on Sight, Execute on Sight, Kill on Sight. */
+/** Warrant classification: AoS, EoS, or KoS. */
 const WARRANT_CLASSIFICATIONS = [
-  { value: "AoS", label: "AoS (Arrest on Sight)" },
-  { value: "EoS", label: "EoS (Execute on Sight)" },
-  { value: "KoS", label: "KoS (Kill on Sight)" },
+  { value: "AoS", label: "AoS" },
+  { value: "EoS", label: "EoS" },
+  { value: "KoS", label: "KoS" },
 ];
 
 function crimeLabel(value) {
