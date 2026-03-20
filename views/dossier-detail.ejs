@@ -32,7 +32,21 @@
     <p><strong>Affiliation:</strong> <%= dossier.affiliation %></p>
     <p><strong>Created By:</strong> <%= dossier.created_by_username || "Unknown" %></p>
     <p><strong>Assigned Investigator:</strong> <%= dossier.assigned_investigator || "Unassigned" %></p>
-    <p><strong>Previous Warrants:</strong> <%= dossier.previous_warrants %></p>
+    <p>
+      <strong>Warrant (summary):</strong>
+      <% 
+        var _exp = dossier.warrant_expires_at ? Date.parse(dossier.warrant_expires_at) : 0;
+        var _active = dossier.warrant_status === "active" && _exp && _exp > Date.now();
+        var _expired = dossier.warrant_status === "active" && _exp && _exp <= Date.now();
+      %>
+      <% if (_active) { %>
+        <strong><%= dossier.warrant_classification || "—" %></strong> — <%= crimeLabel(dossier.warrant_crime) %> — expires <%= new Date(dossier.warrant_expires_at).toLocaleString() %>
+      <% } else if (_expired) { %>
+        <span class="muted">Expired (not shown publicly). Update warrant activity below.</span>
+      <% } else { %>
+        <span class="muted">No active warrant</span>
+      <% } %>
+    </p>
     <p class="muted">Created: <%= dossier.created_at %></p>
     <p class="muted">Last Updated: <%= dossier.updated_at %></p>
   </article>
@@ -54,6 +68,69 @@
       <button class="btn" type="submit">Save Assignment</button>
     </form>
   </section>
+<% } %>
+
+<% if (typeof canEditWarrant !== "undefined" && canEditWarrant) { %>
+  <section class="card">
+    <h2>Warrant activity</h2>
+    <p class="muted">Set an active warrant with type and duration, or choose no warrant. Optional description.</p>
+    <form method="post" action="/dossiers/<%= dossier.id %>/warrants" class="form-grid">
+      <label>
+        Status
+        <select name="warrant_status" id="warrant_status_main" required>
+          <option value="none" <%= dossier.warrant_status !== "active" ? "selected" : "" %>>No active warrant</option>
+          <option value="active" <%= dossier.warrant_status === "active" ? "selected" : "" %>>Active warrant</option>
+        </select>
+      </label>
+      <label id="wrap_class_main">
+        Classification
+        <select name="warrant_classification">
+          <option value="">— Select —</option>
+          <% warrantClassifications.forEach((c) => { %>
+            <option value="<%= c.value %>" <%= dossier.warrant_classification === c.value ? "selected" : "" %>><%= c.label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label id="wrap_crime_main">
+        Warrant type
+        <select name="warrant_crime">
+          <option value="">— Select —</option>
+          <% warrantCrimes.forEach((c) => { %>
+            <option value="<%= c.value %>" <%= dossier.warrant_crime === c.value ? "selected" : "" %>><%= c.label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label id="wrap_duration_main">
+        Duration (from save)
+        <select name="warrant_duration">
+          <% warrantDurationOptions.forEach((d) => { %>
+            <option value="<%= d.value %>"><%= d.label %></option>
+          <% }) %>
+        </select>
+      </label>
+      <label class="full-width">
+        Description (optional)
+        <textarea name="warrant_description" rows="4"><%= dossier.warrant_description || "" %></textarea>
+      </label>
+      <button class="btn" type="submit">Save warrant</button>
+    </form>
+  </section>
+  <script>
+    (function () {
+      var s = document.getElementById("warrant_status_main");
+      var cl = document.getElementById("wrap_class_main");
+      var c = document.getElementById("wrap_crime_main");
+      var d = document.getElementById("wrap_duration_main");
+      function t() {
+        var on = s && s.value === "active";
+        if (cl) cl.style.display = on ? "grid" : "none";
+        if (c) c.style.display = on ? "grid" : "none";
+        if (d) d.style.display = on ? "grid" : "none";
+      }
+      if (s) s.addEventListener("change", t);
+      t();
+    })();
+  </script>
 <% } %>
 
 <section class="card">

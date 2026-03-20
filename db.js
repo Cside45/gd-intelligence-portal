@@ -175,6 +175,55 @@ async function all(sql, params = []) {
   return result.rows;
 }
 
+async function tableHasColumn(tableName, columnName) {
+  if (tableName !== "dossiers" && tableName !== "ia_dossiers") {
+    return false;
+  }
+  if (usePostgres) {
+    const row = await get(
+      `SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ? AND column_name = ?`,
+      [tableName, columnName]
+    );
+    return Boolean(row);
+  }
+  const cols = await all(`PRAGMA table_info(${tableName})`);
+  return cols.some((c) => c.name === columnName);
+}
+
+async function ensureWarrantClassificationColumn(tableName) {
+  if (!(await tableHasColumn(tableName, "warrant_classification"))) {
+    await run(`ALTER TABLE ${tableName} ADD COLUMN warrant_classification TEXT NOT NULL DEFAULT ''`);
+  }
+}
+
+async function migrateWarrantTable(tableName) {
+  const hasOld = await tableHasColumn(tableName, "previous_warrants");
+  const hasNew = await tableHasColumn(tableName, "warrant_status");
+
+  if (!hasOld && hasNew) {
+    return;
+  }
+
+  if (!hasNew) {
+    await run(`ALTER TABLE ${tableName} ADD COLUMN warrant_status TEXT NOT NULL DEFAULT 'none'`);
+    await run(`ALTER TABLE ${tableName} ADD COLUMN warrant_crime TEXT NOT NULL DEFAULT ''`);
+    await run(`ALTER TABLE ${tableName} ADD COLUMN warrant_description TEXT NOT NULL DEFAULT ''`);
+    await run(`ALTER TABLE ${tableName} ADD COLUMN warrant_expires_at TIMESTAMP NULL`);
+    await run(`ALTER TABLE ${tableName} ADD COLUMN warrant_classification TEXT NOT NULL DEFAULT ''`);
+  }
+
+  if (hasOld) {
+    await run(
+      `UPDATE ${tableName} SET warrant_description = previous_warrants WHERE (warrant_description = '' OR warrant_description IS NULL) AND previous_warrants IS NOT NULL AND previous_warrants != ''`
+    );
+    try {
+      await run(`ALTER TABLE ${tableName} DROP COLUMN previous_warrants`);
+    } catch (err) {
+      console.warn(`Could not drop previous_warrants on ${tableName}:`, err.message);
+    }
+  }
+}
+
 async function initializeDatabase() {
   if (usePostgres) {
     await pgQuery(`
@@ -195,7 +244,11 @@ async function initializeDatabase() {
         created_by_username TEXT NOT NULL DEFAULT '',
         assigned_investigator_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         assigned_investigator TEXT NOT NULL DEFAULT '',
-        previous_warrants TEXT NOT NULL,
+        warrant_status TEXT NOT NULL DEFAULT 'none',
+        warrant_crime TEXT NOT NULL DEFAULT '',
+        warrant_description TEXT NOT NULL DEFAULT '',
+        warrant_expires_at TIMESTAMP NULL,
+        warrant_classification TEXT NOT NULL DEFAULT '',
         risk_level TEXT NOT NULL CHECK (risk_level IN ('Low', 'Medium', 'High')),
         notes TEXT NOT NULL DEFAULT '',
         image_path TEXT,
@@ -237,7 +290,11 @@ async function initializeDatabase() {
         created_by_username TEXT NOT NULL DEFAULT '',
         assigned_investigator_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         assigned_investigator TEXT NOT NULL DEFAULT '',
-        previous_warrants TEXT NOT NULL,
+        warrant_status TEXT NOT NULL DEFAULT 'none',
+        warrant_crime TEXT NOT NULL DEFAULT '',
+        warrant_description TEXT NOT NULL DEFAULT '',
+        warrant_expires_at TIMESTAMP NULL,
+        warrant_classification TEXT NOT NULL DEFAULT '',
         risk_level TEXT NOT NULL CHECK (risk_level IN ('Low', 'Medium', 'High')),
         notes TEXT NOT NULL DEFAULT '',
         image_path TEXT,
@@ -289,7 +346,11 @@ async function initializeDatabase() {
       created_by_username TEXT NOT NULL DEFAULT '',
       assigned_investigator_user_id INTEGER,
       assigned_investigator TEXT NOT NULL DEFAULT '',
-      previous_warrants TEXT NOT NULL,
+      warrant_status TEXT NOT NULL DEFAULT 'none',
+      warrant_crime TEXT NOT NULL DEFAULT '',
+      warrant_description TEXT NOT NULL DEFAULT '',
+      warrant_expires_at TIMESTAMP NULL,
+      warrant_classification TEXT NOT NULL DEFAULT '',
       risk_level TEXT NOT NULL CHECK (risk_level IN ('Low', 'Medium', 'High')),
       notes TEXT NOT NULL DEFAULT '',
       image_path TEXT,
@@ -339,7 +400,11 @@ async function initializeDatabase() {
       created_by_username TEXT NOT NULL DEFAULT '',
       assigned_investigator_user_id INTEGER,
       assigned_investigator TEXT NOT NULL DEFAULT '',
-      previous_warrants TEXT NOT NULL,
+      warrant_status TEXT NOT NULL DEFAULT 'none',
+      warrant_crime TEXT NOT NULL DEFAULT '',
+      warrant_description TEXT NOT NULL DEFAULT '',
+      warrant_expires_at TIMESTAMP NULL,
+      warrant_classification TEXT NOT NULL DEFAULT '',
       risk_level TEXT NOT NULL CHECK (risk_level IN ('Low', 'Medium', 'High')),
       notes TEXT NOT NULL DEFAULT '',
       image_path TEXT,
@@ -430,6 +495,11 @@ async function initializeDatabase() {
       await run("ALTER TABLE dossiers ADD COLUMN assigned_investigator TEXT NOT NULL DEFAULT ''");
     }
   }
+
+  await migrateWarrantTable("dossiers");
+  await migrateWarrantTable("ia_dossiers");
+  await ensureWarrantClassificationColumn("dossiers");
+  await ensureWarrantClassificationColumn("ia_dossiers");
 
   const adminUsername = process.env.ADMIN_USERNAME || "admin";
   const adminPassword = process.env.ADMIN_PASSWORD || "change-this-password";

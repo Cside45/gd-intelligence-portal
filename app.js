@@ -10,6 +10,15 @@ const { CloudinaryStorage } = require("multer-storage-cloudinary");
 
 const { get, all, run, initializeDatabase } = require("./db");
 const { requireAuth, requireAdmin } = require("./middleware/auth");
+const {
+  WARRANT_CRIMES,
+  WARRANT_DURATION_OPTIONS,
+  WARRANT_CLASSIFICATIONS,
+  WARRANT_DURATION_MS,
+  crimeLabel,
+  classificationLabel,
+  computeExpiryIso,
+} = require("./warrant-config");
 
 dotenv.config();
 
@@ -34,6 +43,21 @@ function getAssignableDossierInvestigators() {
   return all(
     "SELECT id, username, role FROM users WHERE role IN ('analyst', 'lead_analyst') ORDER BY username ASC"
   );
+}
+
+/** Only IA roles may be assigned to IA dossiers. */
+function getAssignableIaAgents() {
+  return all(
+    "SELECT id, username, role FROM users WHERE role IN ('internal_affairs', 'lead_internal_affairs') ORDER BY username ASC"
+  );
+}
+
+function canEditWarrant(role) {
+  return ["admin", "analyst", "lead_analyst", "internal_affairs", "lead_internal_affairs"].includes(role);
+}
+
+function canAssignMainDossier(role) {
+  return ["admin", "lead_analyst", "lead_internal_affairs"].includes(role);
 }
 
 const uploadDir = path.join(__dirname, "uploads");
@@ -93,10 +117,15 @@ app.use(
 app.use((req, res, next) => {
   res.locals.currentUser = req.session?.user || null;
   res.locals.isAdmin = req.session?.user?.role === "admin";
-  res.locals.isLeadOrAdmin = ["admin", "lead_analyst"].includes(req.session?.user?.role);
+  res.locals.isLeadOrAdmin = ["admin", "lead_analyst", "lead_internal_affairs"].includes(req.session?.user?.role);
   res.locals.canAccessIa = ["admin", "lead_internal_affairs", "internal_affairs"].includes(req.session?.user?.role);
   res.locals.factions = factions;
   res.locals.riskLevels = riskLevels;
+  res.locals.warrantCrimes = WARRANT_CRIMES;
+  res.locals.warrantDurationOptions = WARRANT_DURATION_OPTIONS;
+  res.locals.warrantClassifications = WARRANT_CLASSIFICATIONS;
+  res.locals.crimeLabel = crimeLabel;
+  res.locals.classificationLabel = classificationLabel;
   next();
 });
 
@@ -115,6 +144,33 @@ function requireIaAccess(req, res, next) {
 function canAssignIa(req) {
   return ["admin", "lead_internal_affairs"].includes(req.session?.user?.role);
 }
+
+app.get("/active-warrants", async (req, res, next) => {
+  try {
+    const rows = await all(
+      `SELECT id, name, warrant_crime, warrant_classification, warrant_description, warrant_expires_at
+       FROM dossiers
+       WHERE warrant_status = 'active'
+         AND warrant_expires_at IS NOT NULL
+         AND warrant_expires_at > datetime('now')
+       ORDER BY warrant_expires_at ASC`
+    );
+    const warrants = rows.map((r) => ({
+      ...r,
+      crimeLabelText: crimeLabel(r.warrant_crime),
+      classificationShort: r.warrant_classification || "—",
+      expiresDisplay: r.warrant_expires_at
+        ? new Date(r.warrant_expires_at).toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          })
+        : "",
+    }));
+    res.render("active-warrants", { warrants });
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/", requireAuth, async (req, res, next) => {
   try {
@@ -140,7 +196,7 @@ app.get("/", requireAuth, async (req, res, next) => {
 
     const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const dossiers = await all(
-      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.previous_warrants, d.risk_level, d.notes, d.image_path, d.created_at, d.updated_at,
+      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.warrant_status, d.warrant_crime, d.warrant_classification, d.warrant_description, d.warrant_expires_at, d.risk_level, d.notes, d.image_path, d.created_at, d.updated_at,
               COUNT(r.id) AS report_count
        FROM dossiers d
        LEFT JOIN reports r ON r.dossier_id = d.id
@@ -180,7 +236,7 @@ app.get("/reports/my", requireAuth, async (req, res, next) => {
 app.get("/assignments/my", requireAuth, async (req, res, next) => {
   try {
     const dossiers = await all(
-      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.previous_warrants, d.risk_level, d.updated_at,
+      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.warrant_status, d.warrant_crime, d.warrant_classification, d.warrant_description, d.warrant_expires_at, d.risk_level, d.updated_at,
               COUNT(r.id) AS report_count
        FROM dossiers d
        LEFT JOIN reports r ON r.dossier_id = d.id
@@ -380,6 +436,56 @@ app.post("/logout", requireAuth, (req, res, next) => {
   });
 });
 
+app.get("/account/password", requireAuth, (req, res) => {
+  res.render("account-password", { error: "", success: "" });
+});
+
+app.post("/account/password", requireAuth, async (req, res, next) => {
+  try {
+    const currentPassword = (req.body.current_password || "").trim();
+    const newPassword = (req.body.new_password || "").trim();
+    const confirmPassword = (req.body.confirm_password || "").trim();
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).render("account-password", {
+        error: "Fill in all password fields.",
+        success: "",
+      });
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      res.status(400).render("account-password", {
+        error: "New password and confirmation do not match.",
+        success: "",
+      });
+      return;
+    }
+    if (newPassword.length < 8) {
+      res.status(400).render("account-password", {
+        error: "New password must be at least 8 characters.",
+        success: "",
+      });
+      return;
+    }
+
+    const user = await get("SELECT * FROM users WHERE id = ?", [req.session.user.id]);
+    const ok = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!ok) {
+      res.status(400).render("account-password", {
+        error: "Current password is incorrect.",
+        success: "",
+      });
+      return;
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await run("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, user.id]);
+    res.render("account-password", { error: "", success: "Password updated successfully." });
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/dossiers/new", requireAuth, (req, res) => {
   res.render("new-dossier", {
     error: "",
@@ -387,7 +493,6 @@ app.get("/dossiers/new", requireAuth, (req, res) => {
       name: "",
       faction: factions[0],
       affiliation: "",
-      previous_warrants: "",
       notes: "",
       risk_level: "Low",
     },
@@ -399,19 +504,17 @@ app.post("/dossiers", requireAuth, upload.single("screenshot"), async (req, res,
     const name = (req.body.name || "").trim();
     const faction = (req.body.faction || "").trim();
     const affiliation = (req.body.affiliation || "").trim();
-    const previousWarrants = (req.body.previous_warrants || "").trim();
     const notes = (req.body.notes || "").trim();
     const riskLevel = (req.body.risk_level || "").trim();
     const imagePath = req.file ? req.file.path || `/uploads/${req.file.filename}` : null;
 
-    if (!name || !faction || !affiliation || !previousWarrants || !riskLevel) {
+    if (!name || !faction || !affiliation || !riskLevel) {
       res.status(400).render("new-dossier", {
         error: "Please complete all required fields.",
         form: {
           name,
           faction,
           affiliation,
-          previous_warrants: previousWarrants,
           notes,
           risk_level: riskLevel,
         },
@@ -426,7 +529,6 @@ app.post("/dossiers", requireAuth, upload.single("screenshot"), async (req, res,
           name,
           faction: factions[0],
           affiliation,
-          previous_warrants: previousWarrants,
           notes,
           risk_level,
         },
@@ -441,7 +543,6 @@ app.post("/dossiers", requireAuth, upload.single("screenshot"), async (req, res,
           name,
           faction,
           affiliation,
-          previous_warrants: previousWarrants,
           notes,
           risk_level: "Low",
         },
@@ -451,9 +552,9 @@ app.post("/dossiers", requireAuth, upload.single("screenshot"), async (req, res,
 
     const result = await run(
       `INSERT INTO dossiers
-       (name, faction, affiliation, created_by_user_id, created_by_username, assigned_investigator_user_id, assigned_investigator, previous_warrants, risk_level, notes, image_path, updated_at)
-       VALUES (?, ?, ?, ?, ?, NULL, '', ?, ?, ?, ?, datetime('now'))`,
-      [name, faction, affiliation, req.session.user.id, req.session.user.username, previousWarrants, riskLevel, notes, imagePath]
+       (name, faction, affiliation, created_by_user_id, created_by_username, assigned_investigator_user_id, assigned_investigator, warrant_status, warrant_crime, warrant_description, warrant_expires_at, warrant_classification, risk_level, notes, image_path, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, '', 'none', '', '', NULL, '', ?, ?, ?, datetime('now'))`,
+      [name, faction, affiliation, req.session.user.id, req.session.user.username, riskLevel, notes, imagePath]
     );
 
     res.redirect(`/dossiers/${result.lastID}`);
@@ -482,7 +583,8 @@ app.get("/dossiers/:id", requireAuth, async (req, res, next) => {
       message: "",
       reports,
       analysts,
-      canAssign: ["admin", "lead_analyst"].includes(req.session.user.role),
+      canAssign: canAssignMainDossier(req.session.user.role),
+      canEditWarrant: canEditWarrant(req.session.user.role),
     });
   } catch (error) {
     next(error);
@@ -511,8 +613,65 @@ app.post("/dossiers/:id/notes", requireAuth, async (req, res, next) => {
       message: "Notes updated.",
       reports,
       analysts,
-      canAssign: ["admin", "lead_analyst"].includes(req.session.user.role),
+      canAssign: canAssignMainDossier(req.session.user.role),
+      canEditWarrant: canEditWarrant(req.session.user.role),
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/dossiers/:id/warrants", requireAuth, async (req, res, next) => {
+  try {
+    if (!canEditWarrant(req.session.user.role)) {
+      res.status(403).send("You do not have permission to update warrant activity.");
+      return;
+    }
+    const dossier = await get("SELECT * FROM dossiers WHERE id = ?", [req.params.id]);
+    if (!dossier) {
+      res.status(404).send("Dossier not found.");
+      return;
+    }
+
+    const status = (req.body.warrant_status || "").trim();
+    const crime = (req.body.warrant_crime || "").trim();
+    const classification = (req.body.warrant_classification || "").trim();
+    const description = (req.body.warrant_description || "").trim();
+    const duration = (req.body.warrant_duration || "").trim();
+
+    if (status !== "none" && status !== "active") {
+      res.status(400).send("Invalid warrant status.");
+      return;
+    }
+
+    let expiresAt = null;
+    let crimeVal = "";
+    let classVal = "";
+    if (status === "active") {
+      const validCrime = WARRANT_CRIMES.some((c) => c.value === crime);
+      if (!validCrime) {
+        res.status(400).send("Select a warrant type.");
+        return;
+      }
+      if (!WARRANT_CLASSIFICATIONS.some((c) => c.value === classification)) {
+        res.status(400).send("Select AoS, EoS, or KoS.");
+        return;
+      }
+      if (!WARRANT_DURATION_MS[duration]) {
+        res.status(400).send("Select a warrant duration.");
+        return;
+      }
+      crimeVal = crime;
+      classVal = classification;
+      expiresAt = computeExpiryIso(duration);
+    }
+
+    await run(
+      `UPDATE dossiers SET warrant_status = ?, warrant_crime = ?, warrant_classification = ?, warrant_description = ?, warrant_expires_at = ?, updated_at = datetime('now') WHERE id = ?`,
+      [status, crimeVal, classVal, description, expiresAt, req.params.id]
+    );
+
+    res.redirect(`/dossiers/${req.params.id}`);
   } catch (error) {
     next(error);
   }
@@ -520,8 +679,8 @@ app.post("/dossiers/:id/notes", requireAuth, async (req, res, next) => {
 
 app.post("/dossiers/:id/assign", requireAuth, async (req, res, next) => {
   try {
-    if (!["admin", "lead_analyst"].includes(req.session.user.role)) {
-      res.status(403).send("Only lead analysts or admins can assign dossiers.");
+    if (!canAssignMainDossier(req.session.user.role)) {
+      res.status(403).send("Only lead analysts, lead internal affairs, or admins can assign dossiers.");
       return;
     }
 
@@ -798,18 +957,16 @@ app.post("/dossiers/:id/edit", requireAuth, upload.single("screenshot"), async (
     const name = (req.body.name || "").trim();
     const faction = (req.body.faction || "").trim();
     const affiliation = (req.body.affiliation || "").trim();
-    const previousWarrants = (req.body.previous_warrants || "").trim();
     const riskLevel = (req.body.risk_level || "").trim();
     const imagePath = req.file ? req.file.path || `/uploads/${req.file.filename}` : dossier.image_path;
 
-    if (!name || !faction || !affiliation || !previousWarrants || !riskLevel) {
+    if (!name || !faction || !affiliation || !riskLevel) {
       res.status(400).render("edit-dossier", {
         dossier: {
           ...dossier,
           name,
           faction,
           affiliation,
-          previous_warrants: previousWarrants,
           risk_level: riskLevel,
         },
         error: "Please complete all required fields.",
@@ -824,7 +981,6 @@ app.post("/dossiers/:id/edit", requireAuth, upload.single("screenshot"), async (
           name,
           faction,
           affiliation,
-          previous_warrants: previousWarrants,
           risk_level: riskLevel,
         },
         error: "Invalid faction or risk level.",
@@ -834,9 +990,9 @@ app.post("/dossiers/:id/edit", requireAuth, upload.single("screenshot"), async (
 
     await run(
       `UPDATE dossiers
-       SET name = ?, faction = ?, affiliation = ?, previous_warrants = ?, risk_level = ?, image_path = ?, updated_at = datetime('now')
+       SET name = ?, faction = ?, affiliation = ?, risk_level = ?, image_path = ?, updated_at = datetime('now')
        WHERE id = ?`,
-      [name, faction, affiliation, previousWarrants, riskLevel, imagePath, req.params.id]
+      [name, faction, affiliation, riskLevel, imagePath, req.params.id]
     );
 
     res.redirect(`/dossiers/${req.params.id}`);
@@ -894,7 +1050,7 @@ app.get("/ia", requireIaAccess, async (req, res, next) => {
     }
     const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const dossiers = await all(
-      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.previous_warrants, d.risk_level, d.notes, d.image_path, d.created_at, d.updated_at,
+      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.warrant_status, d.warrant_crime, d.warrant_classification, d.warrant_description, d.warrant_expires_at, d.risk_level, d.notes, d.image_path, d.created_at, d.updated_at,
               COUNT(r.id) AS report_count
        FROM ia_dossiers d
        LEFT JOIN ia_reports r ON r.dossier_id = d.id
@@ -912,7 +1068,7 @@ app.get("/ia", requireIaAccess, async (req, res, next) => {
 app.get("/ia/new", requireIaAccess, (req, res) => {
   res.render("ia-new-dossier", {
     error: "",
-    form: { name: "", faction: factions[0], affiliation: "", previous_warrants: "", notes: "", risk_level: "Low" },
+    form: { name: "", faction: factions[0], affiliation: "", notes: "", risk_level: "Low" },
   });
 });
 
@@ -921,29 +1077,28 @@ app.post("/ia", requireIaAccess, upload.single("screenshot"), async (req, res, n
     const name = (req.body.name || "").trim();
     const faction = (req.body.faction || "").trim();
     const affiliation = (req.body.affiliation || "").trim();
-    const previousWarrants = (req.body.previous_warrants || "").trim();
     const notes = (req.body.notes || "").trim();
     const riskLevel = (req.body.risk_level || "").trim();
     const imagePath = req.file ? req.file.path || `/uploads/${req.file.filename}` : null;
-    if (!name || !faction || !affiliation || !previousWarrants || !riskLevel) {
+    if (!name || !faction || !affiliation || !riskLevel) {
       res.status(400).render("ia-new-dossier", {
         error: "Please complete all required fields.",
-        form: { name, faction, affiliation, previous_warrants: previousWarrants, notes, risk_level: riskLevel },
+        form: { name, faction, affiliation, notes, risk_level: riskLevel },
       });
       return;
     }
     if (!factions.includes(faction) || !riskLevels.includes(riskLevel)) {
       res.status(400).render("ia-new-dossier", {
         error: "Invalid faction or risk level selected.",
-        form: { name, faction: factions[0], affiliation, previous_warrants: previousWarrants, notes, risk_level: "Low" },
+        form: { name, faction: factions[0], affiliation, notes, risk_level: "Low" },
       });
       return;
     }
     const result = await run(
       `INSERT INTO ia_dossiers
-       (name, faction, affiliation, created_by_user_id, created_by_username, assigned_investigator_user_id, assigned_investigator, previous_warrants, risk_level, notes, image_path, updated_at)
-       VALUES (?, ?, ?, ?, ?, NULL, '', ?, ?, ?, ?, datetime('now'))`,
-      [name, faction, affiliation, req.session.user.id, req.session.user.username, previousWarrants, riskLevel, notes, imagePath]
+       (name, faction, affiliation, created_by_user_id, created_by_username, assigned_investigator_user_id, assigned_investigator, warrant_status, warrant_crime, warrant_description, warrant_expires_at, warrant_classification, risk_level, notes, image_path, updated_at)
+       VALUES (?, ?, ?, ?, ?, NULL, '', 'none', '', '', NULL, '', ?, ?, ?, datetime('now'))`,
+      [name, faction, affiliation, req.session.user.id, req.session.user.username, riskLevel, notes, imagePath]
     );
     res.redirect(`/ia/${result.lastID}`);
   } catch (error) {
@@ -954,7 +1109,7 @@ app.post("/ia", requireIaAccess, upload.single("screenshot"), async (req, res, n
 app.get("/ia/assignments/my", requireIaAccess, async (req, res, next) => {
   try {
     const dossiers = await all(
-      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.previous_warrants, d.risk_level, d.updated_at,
+      `SELECT d.id, d.name, d.faction, d.affiliation, d.created_by_username, d.assigned_investigator, d.warrant_status, d.warrant_crime, d.warrant_classification, d.warrant_description, d.warrant_expires_at, d.risk_level, d.updated_at,
               COUNT(r.id) AS report_count
        FROM ia_dossiers d
        LEFT JOIN ia_reports r ON r.dossier_id = d.id
@@ -1001,10 +1156,15 @@ app.get("/ia/:id", requireIaAccess, async (req, res, next) => {
        ORDER BY created_at DESC`,
       [req.params.id]
     );
-    const analysts = await all(
-      "SELECT id, username FROM users WHERE role IN ('internal_affairs', 'lead_internal_affairs') ORDER BY username ASC"
-    );
-    res.render("ia-dossier-detail", { dossier, message: "", reports, analysts, canAssign: canAssignIa(req) });
+    const analysts = await getAssignableIaAgents();
+    res.render("ia-dossier-detail", {
+      dossier,
+      message: "",
+      reports,
+      analysts,
+      canAssign: canAssignIa(req),
+      canEditWarrant: canEditWarrant(req.session.user.role),
+    });
   } catch (error) {
     next(error);
   }
@@ -1014,6 +1174,62 @@ app.post("/ia/:id/notes", requireIaAccess, async (req, res, next) => {
   try {
     const notes = (req.body.notes || "").trim();
     await run("UPDATE ia_dossiers SET notes = ?, updated_at = datetime('now') WHERE id = ?", [notes, req.params.id]);
+    res.redirect(`/ia/${req.params.id}`);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/ia/:id/warrants", requireIaAccess, async (req, res, next) => {
+  try {
+    if (!canEditWarrant(req.session.user.role)) {
+      res.status(403).send("You do not have permission to update warrant activity.");
+      return;
+    }
+    const dossier = await get("SELECT * FROM ia_dossiers WHERE id = ?", [req.params.id]);
+    if (!dossier) {
+      res.status(404).send("Dossier not found.");
+      return;
+    }
+
+    const status = (req.body.warrant_status || "").trim();
+    const crime = (req.body.warrant_crime || "").trim();
+    const classification = (req.body.warrant_classification || "").trim();
+    const description = (req.body.warrant_description || "").trim();
+    const duration = (req.body.warrant_duration || "").trim();
+
+    if (status !== "none" && status !== "active") {
+      res.status(400).send("Invalid warrant status.");
+      return;
+    }
+
+    let expiresAt = null;
+    let crimeVal = "";
+    let classVal = "";
+    if (status === "active") {
+      const validCrime = WARRANT_CRIMES.some((c) => c.value === crime);
+      if (!validCrime) {
+        res.status(400).send("Select a warrant type.");
+        return;
+      }
+      if (!WARRANT_CLASSIFICATIONS.some((c) => c.value === classification)) {
+        res.status(400).send("Select AoS, EoS, or KoS.");
+        return;
+      }
+      if (!WARRANT_DURATION_MS[duration]) {
+        res.status(400).send("Select a warrant duration.");
+        return;
+      }
+      crimeVal = crime;
+      classVal = classification;
+      expiresAt = computeExpiryIso(duration);
+    }
+
+    await run(
+      `UPDATE ia_dossiers SET warrant_status = ?, warrant_crime = ?, warrant_classification = ?, warrant_description = ?, warrant_expires_at = ?, updated_at = datetime('now') WHERE id = ?`,
+      [status, crimeVal, classVal, description, expiresAt, req.params.id]
+    );
+
     res.redirect(`/ia/${req.params.id}`);
   } catch (error) {
     next(error);
@@ -1068,28 +1284,27 @@ app.post("/ia/:id/edit", requireIaAccess, upload.single("screenshot"), async (re
     const name = (req.body.name || "").trim();
     const faction = (req.body.faction || "").trim();
     const affiliation = (req.body.affiliation || "").trim();
-    const previousWarrants = (req.body.previous_warrants || "").trim();
     const riskLevel = (req.body.risk_level || "").trim();
     const imagePath = req.file ? req.file.path || `/uploads/${req.file.filename}` : dossier.image_path;
-    if (!name || !faction || !affiliation || !previousWarrants || !riskLevel) {
+    if (!name || !faction || !affiliation || !riskLevel) {
       res.status(400).render("ia-edit-dossier", {
-        dossier: { ...dossier, name, faction, affiliation, previous_warrants: previousWarrants, risk_level: riskLevel },
+        dossier: { ...dossier, name, faction, affiliation, risk_level: riskLevel },
         error: "Please complete all required fields.",
       });
       return;
     }
     if (!factions.includes(faction) || !riskLevels.includes(riskLevel)) {
       res.status(400).render("ia-edit-dossier", {
-        dossier: { ...dossier, name, faction, affiliation, previous_warrants: previousWarrants, risk_level: riskLevel },
+        dossier: { ...dossier, name, faction, affiliation, risk_level: riskLevel },
         error: "Invalid faction or risk level.",
       });
       return;
     }
     await run(
       `UPDATE ia_dossiers
-       SET name = ?, faction = ?, affiliation = ?, previous_warrants = ?, risk_level = ?, image_path = ?, updated_at = datetime('now')
+       SET name = ?, faction = ?, affiliation = ?, risk_level = ?, image_path = ?, updated_at = datetime('now')
        WHERE id = ?`,
-      [name, faction, affiliation, previousWarrants, riskLevel, imagePath, req.params.id]
+      [name, faction, affiliation, riskLevel, imagePath, req.params.id]
     );
     res.redirect(`/ia/${req.params.id}`);
   } catch (error) {

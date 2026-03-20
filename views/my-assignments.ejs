@@ -23,7 +23,14 @@
       <p><strong>Created By:</strong> <%= dossier.created_by_username || "Unknown" %></p>
       <p><strong>Affiliation:</strong> <%= dossier.affiliation %></p>
       <p><strong>Assigned Investigator:</strong> <%= dossier.assigned_investigator || "Unassigned" %></p>
-      <p><strong>Warrants:</strong> <%= dossier.previous_warrants %></p>
+      <p>
+        <strong>Warrant:</strong>
+        <% if (dossier.warrant_status === "active" && dossier.warrant_expires_at && Date.parse(dossier.warrant_expires_at) > Date.now()) { %>
+          <%= dossier.warrant_classification %> — <%= crimeLabel(dossier.warrant_crime) %>
+        <% } else { %>
+          <span class="muted">None active</span>
+        <% } %>
+      </p>
       <a class="btn btn-ghost" href="/dossiers/<%= dossier.id %>">View dossier</a>
     </article>
   <% }) %>

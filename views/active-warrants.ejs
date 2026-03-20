@@ -1,0 +1,39 @@
+<%- include("partials-header", { title: "Active Warrants" }) %>
+
+<section class="toolbar">
+  <h1>Active Warrants</h1>
+  <p class="muted">Public notice — currently active intelligence warrants only. Entries expire automatically.</p>
+</section>
+
+<section class="card">
+  <% if (!warrants || warrants.length === 0) { %>
+    <p class="muted">No active warrants at this time.</p>
+  <% } else { %>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Classification</th>
+            <th>Warrant type</th>
+            <th>Expires</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% warrants.forEach((w) => { %>
+            <tr>
+              <td><strong><%= w.name %></strong></td>
+              <td><%= w.classificationShort %></td>
+              <td><%= w.crimeLabelText %></td>
+              <td><%= w.expiresDisplay %></td>
+              <td><%= w.warrant_description && w.warrant_description.trim() ? w.warrant_description : "—" %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  <% } %>
+</section>
+
+<%- include("partials-footer") %>

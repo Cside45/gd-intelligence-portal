@@ -13,8 +13,10 @@
           <img class="brand-logo" src="/fdc-symbol.png" alt="FDC symbol" />
           <span>Global Dominion Intelligence Portal</span>
         </a>
-        <% if (currentUser) { %>
-          <div class="topbar-actions">
+        <div class="topbar-actions">
+          <a class="btn btn-ghost" href="/active-warrants">Active Warrants (Public)</a>
+          <% if (currentUser) { %>
+            <a class="btn btn-ghost" href="/account/password">Change Password</a>
             <a class="btn btn-ghost" href="/assignments/my">My Assignments</a>
             <a class="btn btn-ghost" href="/reports/my">My Reports</a>
             <% if (canAccessIa) { %>
@@ -26,8 +28,10 @@
             <form method="post" action="/logout">
               <button class="btn btn-ghost" type="submit">Sign Out</button>
             </form>
-          </div>
-        <% } %>
+          <% } else { %>
+            <a class="btn btn-ghost" href="/login">Sign In</a>
+          <% } %>
+        </div>
       </div>
     </header>
     <main class="container page">
