@@ -39,9 +39,23 @@
         <% }) %>
       </select>
     </label>
-    <label>
+    <label class="full-width screenshot-field">
       Screenshot
-      <input type="file" name="screenshot" accept=".png,.jpg,.jpeg,.webp" />
+      <span class="muted" style="font-weight: normal; display: block; margin-top: 4px">
+        Optional. Choose a file below, or click the box and press <kbd>Ctrl+V</kbd> (<kbd>Cmd+V</kbd> on Mac) to paste an image from the clipboard.
+      </span>
+      <div
+        id="screenshot-paste-zone"
+        class="screenshot-paste-zone"
+        tabindex="0"
+        role="button"
+        aria-label="Paste screenshot from clipboard. Click here then paste."
+      >
+        <span class="screenshot-paste-hint">Click here, then paste image</span>
+        <img id="screenshot-paste-preview" class="screenshot-paste-preview" alt="Screenshot preview" hidden />
+      </div>
+      <input type="file" id="dossier-screenshot-input" name="screenshot" accept=".png,.jpg,.jpeg,.webp" />
+      <p id="screenshot-paste-status" class="muted screenshot-paste-status" aria-live="polite"></p>
     </label>
     <label class="full-width">
       Notes (Editable Anytime)
@@ -50,5 +64,79 @@
     <button type="submit" class="btn">Save Dossier</button>
   </form>
 </section>
+
+<script>
+  (function () {
+    var input = document.getElementById("dossier-screenshot-input");
+    var zone = document.getElementById("screenshot-paste-zone");
+    var preview = document.getElementById("screenshot-paste-preview");
+    var statusEl = document.getElementById("screenshot-paste-status");
+    var hint = zone && zone.querySelector(".screenshot-paste-hint");
+    var previewUrl = null;
+
+    function clearPreview() {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = null;
+      if (preview) {
+        preview.hidden = true;
+        preview.removeAttribute("src");
+      }
+      if (statusEl) statusEl.textContent = "";
+      if (hint) hint.style.display = "";
+    }
+
+    function showPreview(file) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(file);
+      preview.src = previewUrl;
+      preview.hidden = false;
+      if (hint) hint.style.display = "none";
+    }
+
+    function assignPastedFile(file) {
+      var allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+      if (!file || allowed.indexOf(file.type) === -1) {
+        if (statusEl) statusEl.textContent = "Clipboard image must be PNG, JPEG, or WebP.";
+        return;
+      }
+      var ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+      var named = new File([file], "pasted-screenshot." + ext, { type: file.type });
+      var dt = new DataTransfer();
+      dt.items.add(named);
+      input.files = dt.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (statusEl) statusEl.textContent = named.name + " — ready to submit.";
+      showPreview(named);
+    }
+
+    if (!input || !zone) return;
+
+    zone.addEventListener("paste", function (e) {
+      var items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.kind === "file" && item.type.indexOf("image/") === 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          var f = item.getAsFile();
+          if (f) assignPastedFile(f);
+          return;
+        }
+      }
+    });
+
+    input.addEventListener("change", function () {
+      var f = input.files && input.files[0];
+      if (!f) {
+        clearPreview();
+        return;
+      }
+      if (f.type.indexOf("image/") !== 0) return;
+      showPreview(f);
+      if (statusEl) statusEl.textContent = f.name + " — ready to submit.";
+    });
+  })();
+</script>
 
 <%- include("partials-footer") %>
