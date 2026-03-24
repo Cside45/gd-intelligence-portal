@@ -413,6 +413,11 @@ app.post("/admin/users/:id/delete", requireAdmin, async (req, res, next) => {
       [targetUser.id]
     );
 
+    // reports / ia_reports reference users with ON DELETE RESTRICT (Postgres). Reassign FK only; analyst_name stays the original author.
+    const reassignTo = req.session.user.id;
+    await run("UPDATE reports SET analyst_user_id = ? WHERE analyst_user_id = ?", [reassignTo, targetUser.id]);
+    await run("UPDATE ia_reports SET analyst_user_id = ? WHERE analyst_user_id = ?", [reassignTo, targetUser.id]);
+
     await run("DELETE FROM users WHERE id = ?", [targetUser.id]);
 
     const users = await all("SELECT id, username, role FROM users ORDER BY username ASC");
